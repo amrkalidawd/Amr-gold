@@ -7,12 +7,11 @@ import plotly.graph_objs as go
 import ta
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
-import talib
 
 st.set_page_config(page_title="تحليل الذهب AI", layout="wide")
 st.title("🤖📈 تحليل الذهب (XAU/USD) بالذكاء الاصطناعي")
 
-data = yf.download("XAUUSD=X", interval="15m", period="7d")
+data = yf.download("GC=F", interval="15m", period="7d")
 if data.empty:
     st.error("فشل تحميل البيانات!")
     st.stop()
@@ -27,10 +26,7 @@ data['ATR'] = ta.volatility.AverageTrueRange(data['High'], data['Low'], data['Cl
 data['Momentum'] = ta.momentum.MomentumIndicator(data['Close'], window=10).momentum()
 data['Stochastic'] = ta.momentum.StochasticOscillator(data['High'], data['Low'], data['Close']).stoch()
 
-patterns = ['CDLENGULFING', 'CDLDOJI', 'CDLHAMMER', 'CDLSHOOTINGSTAR',
-            'CDLMORNINGSTAR', 'CDLEVENINGSTAR', 'CDLPIERCING', 'CDLDARKCLOUDCOVER']
 for pattern in patterns:
-    func = getattr(talib, pattern)
     data[pattern] = func(data['Open'], data['High'], data['Low'], data['Close'])
 
 def get_dominant_pattern(row):
@@ -39,7 +35,6 @@ def get_dominant_pattern(row):
             return pattern + ("_Bullish" if row[pattern] > 0 else "_Bearish")
     return ""
 
-data['Candle_Pattern'] = data.apply(get_dominant_pattern, axis=1)
 
 recent = data[-100:]
 high = recent['High'].max()
@@ -78,6 +73,33 @@ st.subheader("📢 التوصية")
 st.markdown(f"### الاتجاه المتوقع: {direction}")
 st.markdown(f"**TP (الهدف):** {tp:.2f} | **SL (الوقف):** {sl:.2f}")
 
+
+def detect_doji(open_, high, low, close, threshold=0.1):
+    body = abs(close - open_)
+    range_ = high - low
+    return body / range_ < threshold if range_ != 0 else False
+
+def detect_bullish_engulfing(prev_open, prev_close, curr_open, curr_close):
+    return prev_close < prev_open and curr_close > curr_open and curr_close > prev_open and curr_open < prev_close
+
+def detect_hammer(open_, high, low, close):
+    body = abs(close - open_)
+    lower_wick = open_ - low if close > open_ else close - low
+
+def detect_shooting_star(open_, high, low, close):
+    body = abs(close - open_)
+    upper_wick = high - max(open_, close)
+    lower_wick = min(open_, close) - low
+    return upper_wick > 2 * body and lower_wick < body
+
+def detect_morning_star(prev_close, curr_open, curr_close):
+    return prev_close < curr_open and curr_close > curr_open
+
+def detect_evening_star(prev_close, curr_open, curr_close):
+    return prev_close > curr_open and curr_close < curr_open
+    upper_wick = high - close if close > open_ else high - open_
+    return lower_wick > 2 * body and upper_wick < body
+
 fig = go.Figure()
 fig.add_trace(go.Candlestick(x=data.index, open=data['Open'], high=data['High'],
                              low=data['Low'], close=data['Close'], name='XAU/USD'))
@@ -92,3 +114,36 @@ st.plotly_chart(fig, use_container_width=True)
 
 st.subheader("📊 بيانات فنية + شموع")
 st.dataframe(data[['RSI', 'MACD', 'EMA20', 'ATR', 'Candle_Pattern']].tail(15))
+
+# talib removed for Streamlit compatibility.
+
+# 🔍 كشف نماذج شموع يدوياً
+last = data.iloc[-2:]
+prev = last.iloc[0]
+curr = last.iloc[1]
+
+doji = detect_doji(curr['Open'], curr['High'], curr['Low'], curr['Close'])
+engulf = detect_bullish_engulfing(prev['Open'], prev['Close'], curr['Open'], curr['Close'])
+hammer = detect_hammer(curr['Open'], curr['High'], curr['Low'], curr['Close'])
+
+st.subheader("📌 نماذج الشموع المكتشفة:")
+if doji:
+    st.write("⚠️ Doji")
+if engulf:
+    st.write("🟢 Bullish Engulfing")
+if hammer:
+    st.write("🔨 Hammer")
+if not any([doji, engulf, hammer]):
+    st.write("لا يوجد نمط شمعة واضح")
+
+# 🔍 كشف نماذج إضافية
+shooting_star = detect_shooting_star(curr['Open'], curr['High'], curr['Low'], curr['Close'])
+morning_star = detect_morning_star(prev['Close'], curr['Open'], curr['Close'])
+evening_star = detect_evening_star(prev['Close'], curr['Open'], curr['Close'])
+
+if shooting_star:
+    st.write("🌠 Shooting Star")
+if morning_star:
+    st.write("🌅 Morning Star")
+if evening_star:
+    st.write("🌃 Evening Star")
