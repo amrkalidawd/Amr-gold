@@ -2,7 +2,6 @@ streamlit
 yfinance
 ta
 scikit-learn
-talib-binary==0.4.0.1
 plotly
 pandas
 numpy
